@@ -5,21 +5,30 @@
  */
 package com.hauschildt;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
+import javax.servlet.annotation.MultipartConfig;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.Part;
 
 /**
  *
  * @author k0519415
  */
 @WebServlet(name = "TicketServlet", urlPatterns = {"/tickets"})
+@MultipartConfig(
+        fileSizeThreshold = 5_242_880, //5MB
+        maxFileSize = 20_971_520L //20MB
+)
 public class TicketServlet extends HttpServlet {
     
     private Map<Integer, Ticket> ticketDatabase = new LinkedHashMap<>();
@@ -43,17 +52,17 @@ public class TicketServlet extends HttpServlet {
         }
         switch (action) {
             case "create":
-                showTicketForm(response);
+                showTicketForm(request, response);
                 break;
             case "view":
                 viewTicket(request, response);
                 break;
             case "download":
-
+                downloadAttachment(request, response);
                 break;
             case "list":
             default:
-                listTickets(response);
+                listTickets(request, response);
                 break;
         }
     }
@@ -79,28 +88,45 @@ public class TicketServlet extends HttpServlet {
                 break;
             case "list":
             default:
-                listTickets(response);
+                listTickets(request, response);
                 break;
+        }
+    }
+    
+    private void downloadAttachment(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String idString = request.getParameter("ticketId");
+        Ticket ticket = getTicket(idString);
+        String name = request.getParameter("attachment");
+        if (ticket == null || name == null) {
+            response.sendRedirect("tickets");
+            return;
+        }
+
+        Attachment attachment = ticket.getAttachment(name);
+        if (attachment == null) {
+            response.sendRedirect("tickets?action=view&ticketId=" + idString);
+            return;
+        }
+
+        response.setHeader("Content-Disposition", "attachment; filename=" + attachment.getName());
+        response.setContentType("application/octet-stream");
+
+        try (ServletOutputStream stream = response.getOutputStream()) {
+            stream.write(attachment.getContents());
         }
     }
     
     private void viewTicket(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         String idString = request.getParameter("ticketId");
         Ticket ticket = getTicket(idString);
-        PrintWriter writer = writeHeader(response);
         if (ticket == null) {
-            writer.append("<h2>Ticket not found</h2>\r\n");
-        } else {
-            writer.append("<h2>Ticket #" + idString + "</h2>\r\n")
-                    .append("<p><strong>Customer Name</strong><br>")
-                    .append(ticket.getCustomerName() + "</p>\r\n")
-                    .append("<p><strong>Subject</strong><br>")
-                    .append(ticket.getSubject() + "</p>\r\n")
-                    .append("<p><strong>Message</strong><br>")
-                    .append(ticket.getBody() + "</p>\r\n");
+            return;
         }
-        writer.append("<a href=\"tickets\">Return to list tickets</a>\r\n");
-        writeFooter(writer);
+
+        request.setAttribute("ticketId", idString);
+        request.setAttribute("ticket", ticket);
+
+        request.getRequestDispatcher("/WEB-INF/jsp/view/viewTicket.jsp").forward(request, response);
     }
     
     private Ticket getTicket(String idString) throws ServletException, IOException {
@@ -124,6 +150,14 @@ public class TicketServlet extends HttpServlet {
         ticket.setCustomerName(request.getParameter("customerName"));
         ticket.setSubject(request.getParameter("subject"));
         ticket.setBody(request.getParameter("body"));
+        
+        Part filePart = request.getPart("file1");
+        if (filePart != null && filePart.getSize() > 0) {
+            Attachment attachment = processAttachment(filePart);
+            if (attachment != null) {
+                ticket.addAttachment(attachment);
+            }
+        }
 
         int id;
         synchronized (this) {
@@ -134,25 +168,26 @@ public class TicketServlet extends HttpServlet {
         response.sendRedirect("tickets?action=view&ticketId=" + id);
     }
     
-    private void showTicketForm(HttpServletResponse response) throws ServletException, IOException {
-        PrintWriter writer = writeHeader(response);
-
-        writer.append("  <h2>Create a Ticket</h2>\r\n")
-                .append("  <form method=\"POST\" action=\"tickets\">\r\n")
-                .append("    <input type=\"hidden\" name=\"action\" value=\"create\" />\r\n")
-                .append("    <label for=\"customerName\">Your Name</label><br>\r\n")
-                .append("    <input type=\"text\" name=\"customerName\" id=\"customerName\" required/><br><br>\r\n")
-                .append("    <label for=\"subject\">Subject</label><br>\r\n")
-                .append("    <input type=\"text\" name=\"subject\" id=\"subject\" required/><br><br>\r\n")
-                .append("    <label for=\"body\">Body</label><br>\r\n")
-                .append("    <textarea name=\"body\" id=\"body\" rows=\"5\" cols=\"30\" required></textarea><br><br>\r\n")
-                .append("    <input type=\"submit\" value=\"Submit\"/>\r\n")
-                .append("  </form>\r\n");
-
-        writeFooter(writer);
+    private Attachment processAttachment(Part filePart) throws IOException {
+        Attachment attachment = new Attachment();
+        try (InputStream inputStream = filePart.getInputStream();
+                ByteArrayOutputStream outputStream = new ByteArrayOutputStream();) {
+            int read;
+            final byte[] bytes = new byte[1024];
+            while ((read = inputStream.read(bytes)) != -1) {
+                outputStream.write(bytes, 0, read);
+            }
+            attachment.setName(filePart.getSubmittedFileName());
+            attachment.setContents(outputStream.toByteArray());
+        }
+        return attachment;
+    }
+    
+    private void showTicketForm(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        request.getRequestDispatcher("/WEB-INF/jsp/view/ticketForm.jsp").forward(request, response);
     }
 
-    private void listTickets(HttpServletResponse response)
+    private void listTickets(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         PrintWriter writer = writeHeader(response);
         int numTickets = ticketDatabase.size();
