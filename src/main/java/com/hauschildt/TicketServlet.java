@@ -18,6 +18,7 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 import javax.servlet.http.Part;
 
 /**
@@ -46,6 +47,11 @@ public class TicketServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
+        HttpSession session = request.getSession();
+        if(session.getAttribute("username") == null) {
+            response.sendRedirect("login");
+            return;
+        }
         String action = request.getParameter("action");
         if (action == null) {
             action = "list";
@@ -78,6 +84,12 @@ public class TicketServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
+        HttpSession session = request.getSession();
+        if(session.getAttribute("username") == null) {
+            response.sendRedirect("login");
+            return;
+        }
+        
         String action = request.getParameter("action");
         if (action == null) {
             action = "list";
@@ -147,7 +159,7 @@ public class TicketServlet extends HttpServlet {
     
     private void createTicket(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         Ticket ticket = new Ticket();
-        ticket.setCustomerName(request.getParameter("customerName"));
+        ticket.setCustomerName((String)request.getSession().getAttribute("username"));
         ticket.setSubject(request.getParameter("subject"));
         ticket.setBody(request.getParameter("body"));
         
@@ -189,52 +201,8 @@ public class TicketServlet extends HttpServlet {
 
     private void listTickets(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        PrintWriter writer = writeHeader(response);
-        int numTickets = ticketDatabase.size();
-        writer.append("    <h2>Tickets</h2>\r\n")
-                .append("    <p><a href=\"tickets?action=create\">Create Ticket</a></p>\r\n")
-                .append("    <p style=\"font-style: italic\">There ")
-                .append(numTickets == 1 ? "is " : "are ")
-                .append(Integer.toString(numTickets))
-                .append(numTickets == 1 ? " ticket " : " tickets ")
-                .append(" in the system.</p>\r\n");
-        
-        if (ticketDatabase.size() > 0) {
-            writer.append("    <ul>\r\n");
-            for (int id : ticketDatabase.keySet()) {
-                String idString = Integer.toString(id);
-                Ticket ticket = ticketDatabase.get(id);
-                writer.append("      <li><a href=\"tickets?action=view&ticketId=" + idString + "\">")
-                        .append("Ticket #" + idString + " - ")
-                        .append("From: " + ticket.getCustomerName())
-                        .append("</a></li>\r\n");
-            }
-            writer.append("    </ul>\r\n");
-        }
-
-        writeFooter(writer);
-    }
-
-    private PrintWriter writeHeader(HttpServletResponse response)
-            throws ServletException, IOException {
-        response.setContentType("text/html");
-        response.setCharacterEncoding("UTF-8");
-
-        PrintWriter writer = response.getWriter();
-        writer.append("<!DOCTYPE html>\r\n")
-                .append("<html>\r\n")
-                .append("  <head>\r\n")
-                .append("    <title>Customer Support</title>\r\n")
-                .append("  </head>\r\n")
-                .append("  <body>\r\n");
-
-        return writer;
-    }
-
-    private void writeFooter(PrintWriter writer) {
-        writer.append("  </body>\r\n")
-                .append("</html>\r\n");
-        writer.close();
+        request.setAttribute("ticketDatabase", this.ticketDatabase);
+        request.getRequestDispatcher("/WEB-INF/jsp/view/listTickets.jsp").forward(request, response);
     }
 
 }

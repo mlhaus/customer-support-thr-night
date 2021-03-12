@@ -4,11 +4,11 @@
         <title>Customer Support</title>
     </head>
     <body>
+        <a href="<c:url value="/login?logout" />">Logout</a>
         <h2>Create a Ticket</h2>
         <form method="POST" action="tickets" enctype="multipart/form-data">
             <input type="hidden" name="action" value="create" />
-            <label for="customerName">Your Name</label><br>
-            <input type="text" name="customerName" id="customerName" required/><br><br>
+            <p>Hello, <%= (String)request.getSession().getAttribute("username") %>. How can we help you today?</p>
             <label for="subject">Subject</label><br>
             <input type="text" name="subject" id="subject" required/><br><br>
             <label for="body">Body</label><br>

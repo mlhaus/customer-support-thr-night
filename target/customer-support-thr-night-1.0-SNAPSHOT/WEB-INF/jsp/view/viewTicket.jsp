@@ -8,6 +8,7 @@
         <title>Customer Support</title>
     </head>
     <body>
+        <a href="<c:url value="/login?logout" />">Logout</a>
         <h2>Ticket #<%= ticketId %></h2>
         <p><strong>Customer Name</strong><br>
             <%= ticket.getCustomerName() %></p>
